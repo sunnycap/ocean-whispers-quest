@@ -67,22 +67,24 @@ export const FishingInterface = ({
     setMinigameActive(true);
     setTargetPosition(Math.random() * 80 + 10);
     setPlayerPosition(50);
-    setTargetSpeed(Math.max(0.5, fish.catchDifficulty / 5));
-    setTimeLeft(5);
+    setTargetSpeed(Math.max(1, fish.catchDifficulty / 3));
+    setTimeLeft(Math.max(3, 8 - fish.catchDifficulty / 3)); // Harder fish = less time
   };
 
-  const endMinigame = (success: boolean) => {
+  const endMinigame = useCallback((success: boolean) => {
     setMinigameActive(false);
-    setGameState(prev => ({ ...prev, isFishing: false }));
     setIsAnimating(false);
     setShowRipples(false);
-    
-    if (success && currentFish) {
-      onFishCaught(currentFish);
-    }
-    
     setCurrentFish(null);
-  };
+    
+    // Use setTimeout to prevent React state update warning
+    setTimeout(() => {
+      setGameState(prev => ({ ...prev, isFishing: false }));
+      if (success && currentFish) {
+        onFishCaught(currentFish);
+      }
+    }, 0);
+  }, [currentFish, onFishCaught, setGameState]);
 
   // Minigame logic
   useEffect(() => {
@@ -98,7 +100,7 @@ export const FishingInterface = ({
       });
 
       setTargetPosition(prev => {
-        let newPos = prev + (Math.random() - 0.5) * targetSpeed * 3;
+        let newPos = prev + (Math.random() - 0.5) * targetSpeed * 4;
         return Math.max(5, Math.min(95, newPos));
       });
     }, 100);
@@ -107,18 +109,26 @@ export const FishingInterface = ({
   }, [minigameActive, targetSpeed]);
 
   const handleMinigameClick = () => {
-    if (!minigameActive) return;
+    if (!minigameActive || !currentFish) return;
     
     const distance = Math.abs(playerPosition - targetPosition);
-    const successThreshold = 15; // pixels
+    // Make success threshold smaller and based on fish difficulty
+    const baseThreshold = 8;
+    const difficultyAdjustment = Math.max(2, 10 - currentFish.catchDifficulty);
+    const successThreshold = baseThreshold + difficultyAdjustment;
+    
+    console.log(`Click! Distance: ${distance.toFixed(1)}, Threshold: ${successThreshold}, Fish difficulty: ${currentFish.catchDifficulty}`);
     
     if (distance <= successThreshold) {
+      console.log('Success! Fish caught!');
       endMinigame(true);
     } else {
-      // Move player position towards target but don't end game
+      console.log('Miss! Try again.');
+      // Give small penalty for missing - move hook away from target
       setPlayerPosition(prev => {
-        const direction = targetPosition > prev ? 1 : -1;
-        return prev + direction * 5;
+        const direction = targetPosition > prev ? -1 : 1;
+        const newPos = prev + direction * 8;
+        return Math.max(5, Math.min(95, newPos));
       });
     }
   };
@@ -179,22 +189,39 @@ export const FishingInterface = ({
       {minigameActive && (
         <div className="mt-4 p-4 bg-card rounded-lg border shadow-lg">
           <div className="text-center mb-4">
-            <h3 className="text-lg font-bold">Fish on the line!</h3>
+            <h3 className="text-lg font-bold">🎣 {currentFish?.name} on the line!</h3>
             <p className="text-sm text-muted-foreground">
-              Click when the hook 🎣 is near the fish {currentFish?.emoji}!
+              Click when the hook 🎣 is close to the fish {currentFish?.emoji}!
             </p>
-            <div className="text-sm font-medium mt-2">
-              Time left: {timeLeft.toFixed(1)}s
+            <div className="flex justify-between text-sm font-medium mt-2">
+              <span>Time: {timeLeft.toFixed(1)}s</span>
+              <span className={`${currentFish?.rarity === 'common' ? 'text-rarity-common' : 
+                currentFish?.rarity === 'uncommon' ? 'text-rarity-uncommon' :
+                currentFish?.rarity === 'rare' ? 'text-rarity-rare' :
+                currentFish?.rarity === 'epic' ? 'text-rarity-epic' :
+                currentFish?.rarity === 'legendary' ? 'text-rarity-legendary' :
+                'text-rarity-mythical'}`}>
+                {currentFish?.rarity?.toUpperCase()}
+              </span>
             </div>
           </div>
 
           <div 
-            className="relative h-16 bg-ocean-light/20 rounded-lg cursor-pointer border-2 border-ocean-medium/30"
+            className="relative h-20 bg-ocean-light/20 rounded-lg cursor-pointer border-2 border-ocean-medium/30 hover:bg-ocean-light/30 transition-colors"
             onClick={handleMinigameClick}
           >
+            {/* Success Zone Indicator */}
+            <div 
+              className="absolute top-0 bottom-0 bg-rarity-common/20 border-x-2 border-rarity-common/40 transition-all duration-100"
+              style={{ 
+                left: `${Math.max(0, targetPosition - (currentFish ? 8 + Math.max(2, 10 - currentFish.catchDifficulty) : 10))}%`,
+                width: `${currentFish ? 2 * (8 + Math.max(2, 10 - currentFish.catchDifficulty)) : 20}%`
+              }}
+            />
+            
             {/* Target Fish */}
             <div 
-              className="absolute top-1/2 transform -translate-y-1/2 text-2xl transition-all duration-100"
+              className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl transition-all duration-75 animate-bob"
               style={{ left: `${targetPosition}%` }}
             >
               {currentFish?.emoji}
@@ -202,10 +229,15 @@ export const FishingInterface = ({
             
             {/* Player Hook */}
             <div 
-              className="absolute top-1/2 transform -translate-y-1/2 text-2xl transition-all duration-200"
+              className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl transition-all duration-150 drop-shadow-lg"
               style={{ left: `${playerPosition}%` }}
             >
               🎣
+            </div>
+            
+            {/* Instructions */}
+            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 text-xs text-muted-foreground">
+              Click when hook is in green zone!
             </div>
           </div>
           
