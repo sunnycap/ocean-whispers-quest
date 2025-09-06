@@ -20,11 +20,14 @@ export const FishingInterface = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const [showRipples, setShowRipples] = useState(false);
   const [minigameActive, setMinigameActive] = useState(false);
-  const [targetPosition, setTargetPosition] = useState(50);
-  const [playerPosition, setPlayerPosition] = useState(50);
-  const [targetSpeed, setTargetSpeed] = useState(1);
+  const [fishPosition, setFishPosition] = useState(0);
+  const [rodPosition] = useState(75); // Fixed rod position
+  const [fishSpeed, setFishSpeed] = useState(1);
   const [timeLeft, setTimeLeft] = useState(5);
   const [currentFish, setCurrentFish] = useState<Fish | null>(null);
+  const [clicksRequired, setClicksRequired] = useState(1);
+  const [clicksMade, setClicksMade] = useState(0);
+  const [fishDirection, setFishDirection] = useState(1); // 1 for right, -1 for left
 
   const startFishing = useCallback(() => {
     if (gameState.isFishing) return;
@@ -65,10 +68,30 @@ export const FishingInterface = ({
 
   const startMinigame = (fish: Fish) => {
     setMinigameActive(true);
-    setTargetPosition(Math.random() * 80 + 10);
-    setPlayerPosition(50);
-    setTargetSpeed(Math.max(1, fish.catchDifficulty / 3));
-    setTimeLeft(Math.max(3, 8 - fish.catchDifficulty / 3)); // Harder fish = less time
+    setFishPosition(0);
+    setFishDirection(1);
+    
+    // Set fish speed based on difficulty (faster = harder)
+    const baseSpeed = 0.8;
+    const speedMultiplier = 1 + (fish.catchDifficulty / 10);
+    setFishSpeed(baseSpeed * speedMultiplier);
+    
+    // Set clicks required based on rarity
+    const clickRequirements = {
+      common: 1,
+      uncommon: 2,
+      rare: 3,
+      epic: 4,
+      legendary: 5,
+      mythical: 6,
+    };
+    setClicksRequired(clickRequirements[fish.rarity]);
+    setClicksMade(0);
+    
+    // Set time based on difficulty
+    const baseTime = 8;
+    const timeReduction = fish.catchDifficulty / 4;
+    setTimeLeft(Math.max(4, baseTime - timeReduction));
   };
 
   const endMinigame = useCallback((success: boolean) => {
@@ -86,7 +109,7 @@ export const FishingInterface = ({
     }, 0);
   }, [currentFish, onFishCaught, setGameState]);
 
-  // Minigame logic
+  // Fish movement animation
   useEffect(() => {
     if (!minigameActive) return;
 
@@ -99,37 +122,53 @@ export const FishingInterface = ({
         return prevTime - 0.1;
       });
 
-      setTargetPosition(prev => {
-        let newPos = prev + (Math.random() - 0.5) * targetSpeed * 4;
-        return Math.max(5, Math.min(95, newPos));
+      setFishPosition(prev => {
+        let newPos = prev + (fishSpeed * fishDirection);
+        
+        // Bounce off edges
+        if (newPos >= 95) {
+          setFishDirection(-1);
+          newPos = 95;
+        } else if (newPos <= 5) {
+          setFishDirection(1);
+          newPos = 5;
+        }
+        
+        return newPos;
       });
-    }, 100);
+    }, 50); // Smoother animation with 50ms intervals
 
     return () => clearInterval(interval);
-  }, [minigameActive, targetSpeed]);
+  }, [minigameActive, fishSpeed, fishDirection]);
 
   const handleMinigameClick = () => {
     if (!minigameActive || !currentFish) return;
     
-    const distance = Math.abs(playerPosition - targetPosition);
-    // Make success threshold smaller and based on fish difficulty
-    const baseThreshold = 8;
-    const difficultyAdjustment = Math.max(2, 10 - currentFish.catchDifficulty);
-    const successThreshold = baseThreshold + difficultyAdjustment;
+    const distance = Math.abs(fishPosition - rodPosition);
+    const successThreshold = 8; // Fixed threshold for rod alignment
     
-    console.log(`Click! Distance: ${distance.toFixed(1)}, Threshold: ${successThreshold}, Fish difficulty: ${currentFish.catchDifficulty}`);
+    console.log(`Click! Fish pos: ${fishPosition.toFixed(1)}, Rod pos: ${rodPosition}, Distance: ${distance.toFixed(1)}`);
     
     if (distance <= successThreshold) {
-      console.log('Success! Fish caught!');
-      endMinigame(true);
+      const newClicksMade = clicksMade + 1;
+      setClicksMade(newClicksMade);
+      
+      console.log(`Hit! Clicks: ${newClicksMade}/${clicksRequired}`);
+      
+      // Visual feedback for successful click
+      setFishSpeed(prev => prev * 0.8); // Slow down fish after each hit
+      
+      if (newClicksMade >= clicksRequired) {
+        console.log('Fish caught!');
+        endMinigame(true);
+      } else {
+        // Flash effect or bounce fish for partial success
+        setFishDirection(prev => -prev); // Reverse direction
+      }
     } else {
-      console.log('Miss! Try again.');
-      // Give small penalty for missing - move hook away from target
-      setPlayerPosition(prev => {
-        const direction = targetPosition > prev ? -1 : 1;
-        const newPos = prev + direction * 8;
-        return Math.max(5, Math.min(95, newPos));
-      });
+      console.log('Miss! Fish not aligned with rod.');
+      // Speed up fish slightly as penalty
+      setFishSpeed(prev => Math.min(prev * 1.1, 3));
     }
   };
 
@@ -151,13 +190,18 @@ export const FishingInterface = ({
           </div>
         )}
 
-        {/* Fishing Rod */}
+        {/* Fishing Rod - Fixed Position */}
         <div className="absolute bottom-4 right-8">
           <div 
             className={`text-6xl transform-gpu ${isAnimating ? 'animate-bob' : ''} transition-transform duration-300`}
           >
             {gameState.player.currentRod.emoji}
           </div>
+          {/* Rod Line Indicator */}
+          <div 
+            className="absolute top-8 left-1/2 w-0.5 h-32 bg-amber-600/60 transform -translate-x-1/2"
+            style={{ left: `${rodPosition - 45}%` }}
+          />
         </div>
 
         {/* Zone Info */}
@@ -189,9 +233,9 @@ export const FishingInterface = ({
       {minigameActive && (
         <div className="mt-4 p-4 bg-card rounded-lg border shadow-lg">
           <div className="text-center mb-4">
-            <h3 className="text-lg font-bold">🎣 {currentFish?.name} on the line!</h3>
+            <h3 className="text-lg font-bold">🎣 {currentFish?.name} swimming by!</h3>
             <p className="text-sm text-muted-foreground">
-              Click when the hook 🎣 is close to the fish {currentFish?.emoji}!
+              Click when the fish {currentFish?.emoji} crosses your fishing line!
             </p>
             <div className="flex justify-between text-sm font-medium mt-2">
               <span>Time: {timeLeft.toFixed(1)}s</span>
@@ -204,40 +248,53 @@ export const FishingInterface = ({
                 {currentFish?.rarity?.toUpperCase()}
               </span>
             </div>
+            <div className="text-sm text-center mt-2">
+              <span className="px-2 py-1 bg-primary/10 rounded-full">
+                Clicks: {clicksMade}/{clicksRequired} 
+                {clicksRequired > 1 && ' 🎯'}
+              </span>
+            </div>
           </div>
 
           <div 
-            className="relative h-20 bg-ocean-light/20 rounded-lg cursor-pointer border-2 border-ocean-medium/30 hover:bg-ocean-light/30 transition-colors"
+            className="relative h-24 bg-ocean-light/20 rounded-lg cursor-pointer border-2 border-ocean-medium/30 hover:bg-ocean-light/30 transition-colors overflow-hidden"
             onClick={handleMinigameClick}
           >
-            {/* Success Zone Indicator */}
+            {/* Fishing Line Indicator */}
             <div 
-              className="absolute top-0 bottom-0 bg-rarity-common/20 border-x-2 border-rarity-common/40 transition-all duration-100"
-              style={{ 
-                left: `${Math.max(0, targetPosition - (currentFish ? 8 + Math.max(2, 10 - currentFish.catchDifficulty) : 10))}%`,
-                width: `${currentFish ? 2 * (8 + Math.max(2, 10 - currentFish.catchDifficulty)) : 20}%`
-              }}
+              className="absolute top-0 bottom-0 w-1 bg-amber-600/80 border-x border-amber-700/60"
+              style={{ left: `${rodPosition}%` }}
+            />
+            <div 
+              className="absolute top-0 bottom-0 w-6 bg-rarity-common/20 border-x-2 border-rarity-common/40"
+              style={{ left: `${rodPosition - 3}%` }}
             />
             
-            {/* Target Fish */}
+            {/* Swimming Fish */}
             <div 
-              className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl transition-all duration-75 animate-bob"
-              style={{ left: `${targetPosition}%` }}
+              className={`absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-4xl transition-all duration-75 ${
+                Math.abs(fishPosition - rodPosition) <= 8 ? 'animate-bounce' : 'animate-float'
+              } ${fishDirection === 1 ? '' : 'scale-x-[-1]'}`}
+              style={{ 
+                left: `${fishPosition}%`,
+                filter: clicksMade > 0 ? `hue-rotate(${clicksMade * 30}deg) brightness(1.2)` : 'none'
+              }}
             >
               {currentFish?.emoji}
             </div>
             
-            {/* Player Hook */}
-            <div 
-              className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl transition-all duration-150 drop-shadow-lg"
-              style={{ left: `${playerPosition}%` }}
-            >
-              🎣
-            </div>
+            {/* Success indicator when fish is near line */}
+            {Math.abs(fishPosition - rodPosition) <= 8 && (
+              <div 
+                className="absolute top-1 left-1/2 transform -translate-x-1/2 text-rarity-common font-bold animate-pulse"
+              >
+                CLICK NOW! 🎯
+              </div>
+            )}
             
             {/* Instructions */}
             <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 text-xs text-muted-foreground">
-              Click when hook is in green zone!
+              Click when fish crosses the yellow line!
             </div>
           </div>
           

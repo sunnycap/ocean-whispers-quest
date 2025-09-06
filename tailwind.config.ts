@@ -126,9 +126,14 @@ export default {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-5px)" },
         },
-        "shimmer": {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
+        "fish-swim": {
+          "0%": { transform: "translateX(-100px) scaleX(1)" },
+          "50%": { transform: "translateX(50vw) scaleX(1)" },
+          "100%": { transform: "translateX(100vw) scaleX(-1)" },
+        },
+        "catch-flash": {
+          "0%, 100%": { filter: "brightness(1) hue-rotate(0deg)" },
+          "50%": { filter: "brightness(1.5) hue-rotate(60deg)" },
         },
       },
       animation: {
@@ -139,7 +144,8 @@ export default {
         "fish-jump": "fish-jump 1s ease-in-out",
         "reel-in": "reel-in 2s ease-in-out",
         "float": "float 3s ease-in-out infinite",
-        "shimmer": "shimmer 2s linear infinite",
+        "fish-swim": "fish-swim 4s linear infinite",
+        "catch-flash": "catch-flash 0.5s ease-in-out",
       },
     },
   },
